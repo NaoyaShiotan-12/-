@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>Fruit Merge Game</title>
+
+<style>
+    body{
+        margin:0;
+        background:#222;
+        overflow:hidden;
+        font-family:sans-serif;
+        touch-action:none;
+    }
+
+    canvas{
+        display:block;
+        margin:auto;
+        background:white;
+    }
+
+    #ui{
+        position:absolute;
+        top:10px;
+        left:10px;
+        color:white;
+        z-index:10;
+        font-weight:bold;
+    }
+
+    #gameover{
+        position:absolute;
+        inset:0;
+        background:rgba(0,0,0,0.7);
+        display:none;
+        justify-content:center;
+        align-items:center;
+        flex-direction:column;
+        color:white;
+        font-size:32px;
+        z-index:20;
+    }
+
+    button{
+        padding:12px 20px;
+        font-size:18px;
+        margin-top:20px;
+    }
+</style>
+</head>
+<body>
+
+<div id="ui">
+    <div id="stage">STAGE: 1</div>
+    <div id="score">SCORE: 0</div>
+    <div id="item">ITEM: 0 / 20</div>
+</div>
+
+<div id="gameover">
+    <div>GAME OVER</div>
+    <div id="finalScore"></div>
+    <button onclick="resetGame()">RETRY</button>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+canvas.width = 400;
+canvas.height = 700;
+
+const WIDTH = canvas.width;
+const HEIGHT = canvas.height;
+
+const DEAD_LINE_Y = 100;
+
+let gravity = 0.4;
+const bounce = 0.4;
+const friction = 0.98;
+
+let fruits = [];
+
+let stageLevel = 1;
+let currentLevelScore = 0;
+let totalScore = 0;
+
+let currentFruitLevel = 1;
+let nextFruitLevel = 1;
+
+let mouseX = WIDTH / 2;
+
+let gameOver = false;
+let gameOverCounter = 0;
+
+let targetLevel = 1;
+let itemChargeCount = 0;
+
+const SCORE_TO_LEVEL_UP = 20;
+
+const colors = [
+    "#ff0000",
+    "#ff9900",
+    "#ffff00",
+    "#00cc00",
+    "#00ffff",
+    "#0000ff",
+    "#800080"
+];
+
+class Fruit{
+    constructor(x,y,level){
+        this.x = x;
+        this.y = y;
+
+        this.vx = 0;
+        this.vy = 0;
+
+        this.level = level;
+
+        this.radius = 15 + (level - 1) * 10;
+
+        this.color = colors[level - 1] || "#ff00ff";
+    }
+
+    update(){
+
+        this.vy += gravity;
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        if(this.x - this.radius < 0){
+            this.x = this.radius;
+            this.vx *= -bounce;
+        }
+
+        if(this.x + this.radius > WIDTH){
+            this.x = WIDTH - this.radius;
+            this.vx *= -bounce;
+        }
+
+        if(this.y + this.radius > HEIGHT){
+            this.y = HEIGHT - this.radius;
+            this.vy *= -bounce;
+            this.vx *= friction;
+        }
+    }
+
+    draw(){
+
+        ctx.beginPath();
+
+        ctx.fillStyle = this.color;
+
+        ctx.arc(this.x,this.y,this.radius,0,Math.PI*2);
+
+        ctx.fill();
+
+        ctx.strokeStyle = "black";
+        ctx.stroke();
+    }
+}
+
+function randomLevel(){
+
+    let max = 3;
+
+    if(stageLevel === 2) max = 4;
+    if(stageLevel >= 3) max = 5;
+
+    return Math.floor(Math.random() * max) + 1;
+}
+
+function drawNextFruit(){
+
+    nextFruitLevel = randomLevel();
+
+    if(currentFruitLevel === 0){
+        currentFruitLevel = randomLevel();
+    }
+}
+
+drawNextFruit();
+
+canvas.addEventListener("mousemove",(e)=>{
+
+    const rect = canvas.getBoundingClientRect();
+
+    mouseX = e.clientX - rect.left;
+});
+
+canvas.addEventListener("touchmove",(e)=>{
+
+    e.preventDefault();
+
+    const rect = canvas.getBoundingClientRect();
+
+    mouseX = e.touches[0].clientX - rect.left;
+
+},{passive:false});
+
+canvas.addEventListener("click",spawnFruit);
+
+canvas.addEventListener("touchstart",(e)=>{
+
+    e.preventDefault();
+
+    spawnFruit();
+
+},{passive:false});
+
+function spawnFruit(){
+
+    if(gameOver) return;
+
+    fruits.push(new Fruit(mouseX,50,currentFruitLevel));
+
+    currentFruitLevel = nextFruitLevel;
+
+    drawNextFruit();
+}
+
+function update(){
+
+    for(let f of fruits){
+        f.update();
+    }
+
+    checkCollisions();
+
+    checkGameOver();
+}
+
+function checkCollisions(){
+
+    for(let i=0;i<fruits.length;i++){
+
+        for(let j=i+1;j<fruits.length;j++){
+
+            const f1 = fruits[i];
+            const f2 = fruits[j];
+
+            const dx = f2.x - f1.x;
+            const dy = f2.y - f1.y;
+
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            const minDist = f1.radius + f2.radius;
+
+            if(dist < minDist){
+
+                if(f1.level === f2.level){
+
+                    const newLevel = f1.level + 1;
+
+                    if(newLevel >= 7){
+
+                        fruits = [];
+
+                        totalScore += 100;
+
+                        return;
+                    }
+
+                    const nx = (f1.x + f2.x) / 2;
+                    const ny = (f1.y + f2.y) / 2;
+
+                    fruits.splice(j,1);
+                    fruits.splice(i,1);
+
+                    fruits.push(new Fruit(nx,ny,newLevel));
+
+                    totalScore += newLevel;
+                    currentLevelScore += newLevel;
+
+                    if(newLevel === targetLevel && itemChargeCount < 20){
+                        itemChargeCount++;
+                    }
+
+                    if(currentLevelScore >= SCORE_TO_LEVEL_UP){
+
+                        stageLevel++;
+
+                        currentLevelScore = 0;
+
+                        gravity += 0.2;
+                    }
+
+                    return;
+
+                }else{
+
+                    const overlap = minDist - dist;
+
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+
+                    f1.x -= nx * overlap * 0.5;
+                    f1.y -= ny * overlap * 0.5;
+
+                    f2.x += nx * overlap * 0.5;
+                    f2.y += ny * overlap * 0.5;
+                }
+            }
+        }
+    }
+}
+
+function checkGameOver(){
+
+    let overflow = false;
+
+    for(let f of fruits){
+
+        if(f.y - f.radius < DEAD_LINE_Y){
+
+            overflow = true;
+            break;
+        }
+    }
+
+    if(overflow){
+
+        gameOverCounter++;
+
+        if(gameOverCounter > 120){
+
+            gameOver = true;
+
+            document.getElementById("gameover").style.display = "flex";
+
+            document.getElementById("finalScore").innerText =
+                "SCORE : " + totalScore;
+        }
+
+    }else{
+
+        gameOverCounter = 0;
+    }
+}
+
+function draw(){
+
+    ctx.clearRect(0,0,WIDTH,HEIGHT);
+
+    ctx.strokeStyle = "red";
+
+    ctx.setLineDash([10,10]);
+
+    ctx.beginPath();
+
+    ctx.moveTo(0,DEAD_LINE_Y);
+
+    ctx.lineTo(WIDTH,DEAD_LINE_Y);
+
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+
+    for(let f of fruits){
+        f.draw();
+    }
+
+    if(!gameOver){
+
+        const preview = new Fruit(mouseX,50,currentFruitLevel);
+
+        ctx.globalAlpha = 0.5;
+
+        preview.draw();
+
+        ctx.globalAlpha = 1;
+    }
+
+    drawNextPreview();
+
+    updateUI();
+}
+
+function drawNextPreview(){
+
+    ctx.strokeStyle = "black";
+
+    ctx.strokeRect(WIDTH - 80,10,65,65);
+
+    ctx.fillStyle = "black";
+
+    ctx.font = "12px sans-serif";
+
+    ctx.fillText("NEXT",WIDTH - 62,25);
+
+    const next = new Fruit(WIDTH - 48,50,nextFruitLevel);
+
+    next.draw();
+}
+
+function updateUI(){
+
+    document.getElementById("stage").innerText =
+        "STAGE: " + stageLevel;
+
+    document.getElementById("score").innerText =
+        "SCORE: " + totalScore;
+
+    document.getElementById("item").innerText =
+        "ITEM: " + itemChargeCount + " / 20";
+}
+
+function resetGame(){
+
+    fruits = [];
+
+    gravity = 0.4;
+
+    stageLevel = 1;
+
+    currentLevelScore = 0;
+
+    totalScore = 0;
+
+    itemChargeCount = 0;
+
+    gameOverCounter = 0;
+
+    gameOver = false;
+
+    currentFruitLevel = 1;
+
+    drawNextFruit();
+
+    document.getElementById("gameover").style.display = "none";
+}
+
+function loop(){
+
+    if(!gameOver){
+        update();
+    }
+
+    draw();
+
+    requestAnimationFrame(loop);
+}
+
+loop();
+
+setInterval(()=>{
+
+    targetLevel = Math.floor(Math.random() * 6) + 1;
+
+},10000);
+
+</script>
+
+</body>
+</html>
