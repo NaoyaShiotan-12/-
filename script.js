@@ -221,7 +221,8 @@ document.getElementById("addBtn").onclick = async () => {
         allData[selectedDate] = [];
     }
 
-    allData[allData[selectedDate].push(text)];
+	allData[selectedDate].push(text);
+
 
     await saveData();
 
